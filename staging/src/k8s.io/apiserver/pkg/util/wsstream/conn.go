@@ -150,6 +150,7 @@ type Conn struct {
 	ready            chan struct{}
 	ws               *websocket.Conn
 	timeout          time.Duration
+	closeHandler     CloseHandler
 }
 
 // NewConn creates a WebSocket connection that supports a set of channels. Channels begin each
@@ -172,12 +173,18 @@ func (conn *Conn) SetIdleTimeout(duration time.Duration) {
 	conn.timeout = duration
 }
 
+type CloseHandler func(conn *Conn, closeCode uint16)
+
+func (conn *Conn) SetCloseHandler(handler CloseHandler) {
+	conn.closeHandler = handler
+}
+
 // Open the connection and create channels for reading and writing. It returns
 // the selected subprotocol, a slice of channels and an error.
 func (conn *Conn) Open(w http.ResponseWriter, req *http.Request) (string, []io.ReadWriteCloser, error) {
 	go func() {
 		defer runtime.HandleCrash()
-		defer conn.Close()
+		defer conn.RemoteClose()
 		websocket.Server{Handshake: conn.handshake, Handler: conn.handle}.ServeHTTP(w, req)
 	}()
 	<-conn.ready
@@ -239,9 +246,24 @@ func (conn *Conn) Close() error {
 	return nil
 }
 
+func (conn *Conn) CloseChannel(channel int) error {
+	<-conn.ready
+	conn.channels[channel].Close()
+	return nil
+}
+
+func (conn *Conn) RemoteClose() error {
+	<-conn.ready
+	if conn.closeHandler == nil {
+		conn.Close()
+	} else {
+		conn.closeHandler(conn, conn.ws.CloseCode)
+	}
+	return nil
+}
+
 // handle implements a websocket handler.
 func (conn *Conn) handle(ws *websocket.Conn) {
-	defer conn.Close()
 	conn.initialize(ws)
 
 	for {

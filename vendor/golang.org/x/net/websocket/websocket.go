@@ -178,6 +178,8 @@ type Conn struct {
 	PayloadType        byte
 	defaultCloseStatus int
 
+	CloseCode uint16
+
 	// MaxPayloadBytes limits the size of frame payload received over Conn
 	// by Codec's Receive method. If zero, DefaultMaxPayloadBytes is used.
 	MaxPayloadBytes int

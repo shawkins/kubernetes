@@ -94,7 +94,17 @@ func createWebSocketStreams(req *http.Request, w http.ResponseWriter, opts *Opti
 			Channels: channels,
 		},
 	})
+	closeHandler := func(conn *wsstream.Conn, closeCode uint16) {
+		if !opts.Stdin || closeCode != 1000 {
+			conn.Close()
+		} else {
+			// close just the stdin and give the exec time to exit
+			conn.CloseChannel(stdinChannel)
+			// TODO: what if the exec doesn't exit - schedule a Close as a catch all?
+		}
+	}
 	conn.SetIdleTimeout(idleTimeout)
+	conn.SetCloseHandler(closeHandler)
 	negotiatedProtocol, streams, err := conn.Open(responsewriter.GetOriginal(w), req)
 	if err != nil {
 		runtime.HandleError(fmt.Errorf("unable to upgrade websocket connection: %v", err))

@@ -286,19 +286,21 @@ func (handler *hybiFrameHandler) HandleFrame(frame frameReader) (frameReader, er
 		frame.(*hybiFrameReader).header.OpCode = handler.payloadType
 	case TextFrame, BinaryFrame:
 		handler.payloadType = frame.PayloadType()
-	case CloseFrame:
-		return nil, io.EOF
-	case PingFrame, PongFrame:
+	case PingFrame, PongFrame, CloseFrame:
 		b := make([]byte, maxControlFramePayloadLength)
 		n, err := io.ReadFull(frame, b)
 		if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
 			return nil, err
 		}
 		io.Copy(ioutil.Discard, frame)
-		if frame.PayloadType() == PingFrame {
+		switch frame.PayloadType() {
+		case PingFrame:
 			if _, err := handler.WritePong(b[:n]); err != nil {
 				return nil, err
 			}
+		case CloseFrame:
+			handler.conn.CloseCode = binary.LittleEndian.Uint16(b[:n])
+			return nil, io.EOF
 		}
 		return nil, nil
 	}
